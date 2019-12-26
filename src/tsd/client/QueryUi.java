@@ -32,6 +32,7 @@ import java.util.Map.Entry;
 import net.opentsdb.graph.Plot;
 
 import com.google.gwt.core.client.EntryPoint;
+import com.google.gwt.core.client.GWT;
 import com.google.gwt.dom.client.Style;
 import com.google.gwt.dom.client.Style.Cursor;
 import com.google.gwt.event.dom.client.ClickEvent;
@@ -121,6 +122,8 @@ public class QueryUi implements EntryPoint, HistoryListener {
 
   private static final DateTimeFormat FULLDATE =
     DateTimeFormat.getFormat("yyyy/MM/dd-HH:mm:ss");
+  
+  private static final boolean explicit_tags_default = true;
 
   private final Label current_error = new Label();
 
@@ -251,6 +254,7 @@ public class QueryUi implements EntryPoint, HistoryListener {
           aggregators.add(aggs.get(i).isString().stringValue());
         }
         ((MetricForm) metrics.getWidget(0)).setAggregators(aggregators);
+        GWT.log("got /aggregators JSON");
         refreshFromQueryString();
         refreshGraph();
       }
@@ -542,6 +546,9 @@ public class QueryUi implements EntryPoint, HistoryListener {
     metric.setMetricChangeHandler(metric_change_handler);
     metric.setAggregators(aggregators);
     metric.setFillPolicies(fill_policies);
+    metric.setExplicitTags(explicit_tags_default);
+    GWT.log("QueryUi.addMetricForm(), setExplicitTags " + explicit_tags_default);
+
     metrics.insert(metric, label, item);
     return metric;
   }
@@ -795,6 +802,7 @@ public class QueryUi implements EntryPoint, HistoryListener {
 
   private void refreshFromQueryString() {
     final QueryString qs = getQueryString(URL.decode(History.getToken()));
+    GWT.log("QueryUi.refreshFromQueryString()" + qs);
 
     maybeSetTextbox(qs, "start", start_datebox.getTextBox());
     maybeSetTextbox(qs, "end", end_datebox.getTextBox());
@@ -1038,10 +1046,15 @@ public class QueryUi implements EntryPoint, HistoryListener {
             final MetricForm metric = (MetricForm) widget;
             final JSONArray tags = etags.get(i).isArray();
             // Skip if no tags were associated with the query.
+            boolean need_refresh = false;
             if (null != tags) {
               for (int j = 0; j < tags.size(); j++) {
-                metric.autoSuggestTag(tags.get(j).isString().stringValue());
+            	final String tagvalue = tags.get(j).isString().stringValue();
+            	need_refresh |= metric.autoSuggestTag(tagvalue);
               }
+            }
+            if (need_refresh) {
+                refreshGraph();
             }
           }
         }
@@ -1435,5 +1448,6 @@ public class QueryUi implements EntryPoint, HistoryListener {
       }
     }
   }
+
 
 }
