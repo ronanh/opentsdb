@@ -1410,7 +1410,7 @@ final class TsdbQuery implements Query {
     }
     if (tsuids != null && !tsuids.isEmpty()) {
       createAndSetTSUIDFilter(scanner);
-    } else if (filters.size() > 0) {
+    } else if (filters.size() > 0 || explicit_tags) {
       createAndSetFilter(scanner);
     }
 

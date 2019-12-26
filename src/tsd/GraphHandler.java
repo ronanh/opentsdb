@@ -44,6 +44,7 @@ import net.opentsdb.core.DataPoints;
 import net.opentsdb.core.Query;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.core.TSQuery;
+import net.opentsdb.core.TSSubQuery;
 import net.opentsdb.graph.Plot;
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.stats.Histogram;
@@ -167,10 +168,28 @@ final class GraphHandler implements HttpRpc {
     // Parse TSQuery from HTTP query
     final TSQuery tsquery = QueryRpc.parseQuery(tsdb, query);
     tsquery.validateAndSetQuery();
-
+    
+    // Queries with explicitTags and without any filter would return
+    // no results which makes it impossible to retrieve aggregated_tags
+    // In order to help the GUI populate tags, we run a fake query
+    // without explicitTags.
+    // the results will be used to build aggregated_tags and the datapoints
+    // will be discarded.
+    boolean[] fake_explicittags_queries = 
+        new boolean[tsquery.getQueries().size()];
+    for (int i=0; i<fake_explicittags_queries.length; i++) {
+      final TSSubQuery sub = tsquery.getQueries().get(i);
+      fake_explicittags_queries[i] = sub.getExplicitTags() && 
+          (sub.getFilters() == null || sub.getFilters().isEmpty());
+      if (fake_explicittags_queries[i]) {
+        // Disable explicitTags on the fake query
+        sub.setExplicitTags(false);
+      }
+    }
+    
     // Build the queries for the parsed TSQuery
     Query[] tsdbqueries = tsquery.buildQueries(tsdb);
-
+    
     List<String> options = query.getQueryStringParams("o");
     if (options == null) {
       options = new ArrayList<String>(tsdbqueries.length);
@@ -216,10 +235,18 @@ final class GraphHandler implements HttpRpc {
         // TODO(tsuna): Optimization: run each query in parallel.
         final DataPoints[] series = tsdbqueries[i].run();
         for (final DataPoints datapoints : series) {
-          plot.add(datapoints, options.get(i));
           aggregated_tags[i] = new HashSet<String>();
           aggregated_tags[i].addAll(datapoints.getAggregatedTags());
-          npoints += datapoints.aggregatedSize();
+          if (!fake_explicittags_queries[i]) {
+            plot.add(datapoints, options.get(i));
+            npoints += datapoints.aggregatedSize();
+          }
+          // For explicit_tags queries it is necessary to return
+          // all tags so that the GUI can populate available tags
+          if (tsquery.getQueries().get(i).getExplicitTags() ||
+            fake_explicittags_queries[i]) {
+            aggregated_tags[i].addAll(datapoints.getTags().keySet());
+          }
         }
       } catch (RuntimeException e) {
         logInfo(query, "Query failed (stack trace coming): "
